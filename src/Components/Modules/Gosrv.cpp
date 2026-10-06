@@ -1,9 +1,10 @@
+#include <Utils/InfoString.hpp>
+
 #include "Gosrv.hpp"
 #include "Dedicated.hpp"
 #include "Components/Loader.hpp"
 #include "ServerList.hpp"
 
-#include <Utils/InfoString.hpp>
 #include <Utils/Library.hpp>
 #include <Utils/String.hpp>
 
