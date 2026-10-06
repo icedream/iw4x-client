@@ -1,9 +1,7 @@
-#include <Utils/InfoString.hpp>
-
 #include "Gosrv.hpp"
 #include "Dedicated.hpp"
 #include "Components/Loader.hpp"
-#include "ServerList.hpp"
+#include "Events.hpp"
 
 #include <Utils/Library.hpp>
 #include <Utils/String.hpp>
@@ -19,6 +17,8 @@
 // build itself has no dependency on it.
 #define GOSRV_DLL "gosrv.dll"
 
+namespace Components
+{
 namespace
 {
   // cgo export symbols are plain C; the prototypes below are the
@@ -45,7 +45,10 @@ namespace
 
     bool load()
     {
-      Utils::Library lib(GOSRV_DLL, true);
+      // freeOnDestroy = false: the handle must stay loaded for the
+      // process lifetime, or the pointers below dangle the moment
+      // this local is destroyed.
+      Utils::Library lib(GOSRV_DLL, false);
       if (!lib.isValid())
       {
         return false;
@@ -59,9 +62,6 @@ namespace
       free_ = lib.getProc<SlFreeFn>("sl_free");
       announce = lib.getProc<SlAnnounceFn>("sl_announce");
 
-      // The Library object is intentionally destroyed here: the
-      // module stays resident (LoadLibrary refcount) and the
-      // pointers remain valid for the process lifetime.
       return apiVersion && setLogCb && lastError && new_ && browse && free_ && announce;
     }
   };
@@ -80,7 +80,10 @@ namespace
     }
 
     const auto prefix = level == SL_LOG_ERROR ? "^1[gosrv] " : (level == SL_LOG_WARN ? "^3[gosrv] " : "[gosrv] ");
-    Components::Logger::Print(std::string(prefix) + msg);
+    // The message is data, never a format string: game-defined meta
+    // values may contain braces, and this runs on a Go thread where
+    // a format_error would take the process down.
+    Components::Logger::Print("{}{}\n", prefix, msg);
   }
 
   // A NULL-terminated C array from a vector of std::strings. The
@@ -138,6 +141,10 @@ namespace
   std::once_flag clientInitFlag;
   std::atomic<void*> clientHandle{ nullptr };
   std::atomic<bool> clientReady{ false };
+  // Set when the one-time init fails permanently (missing DLL, bad
+  // API version, no bootstrap, sl_new error). Stops clientUp from
+  // burning the full wait on every browse.
+  std::atomic<bool> clientFailed{ false };
 
   void ensureClient()
   {
@@ -147,12 +154,14 @@ namespace
       {
         if (!Api.load())
         {
+          clientFailed = true;
           Components::Logger::Print("gosrv: {} not found next to the game; the DHT server list is disabled (using the legacy master server)\n", GOSRV_DLL);
           return;
         }
 
         if (Api.apiVersion() != 1)
         {
+          clientFailed = true;
           Components::Logger::Print("gosrv: unsupported API version {} (want 1); the DHT server list is disabled\n", Api.apiVersion());
           return;
         }
@@ -223,7 +232,7 @@ namespace
           cfg.startup_timeout_ms = 10000;
           // Hardcoded last resort: the direct bootstrap dvar, as a
           // game would ship its own-DHT addresses in its binary.
-          if (!cOwn.empty())
+          if (!own.empty())
           {
             cfg.fallback_addrs = cOwn.data();
             cfg.fallback_count = static_cast<int>(own.size());
@@ -236,19 +245,19 @@ namespace
             Components::Logger::Print("^3gosrv: anchor addresses/operator key not configured; falling back to direct bootstrap\n");
           }
           cfg.join_mode = 0;
-          if (cOwn.empty())
+          if (own.empty())
           {
+            clientFailed = true;
             Components::Logger::Print("^3gosrv: no bootstrap addresses configured (gosrv_bootstrap empty); the DHT server list is disabled\n");
             return;
           }
           cfg.bootstrap_addrs = cOwn.data();
         }
 
-        // cgo export takes non-const pointers; the cast is safe
-        // because the library only reads the struct.
-        auto* h = Api.new_(reinterpret_cast<SlConfig*>(&cfg));
+        auto* h = Api.new_(&cfg);
         if (h == nullptr)
         {
+          clientFailed = true;
           Components::Logger::Print("^1gosrv: sl_new failed: {}\n", Api.lastError());
           return;
         }
@@ -263,17 +272,22 @@ namespace
   bool clientUp(std::chrono::milliseconds wait)
   {
     // Give the one-time init a bounded chance to finish; the worker
-    // thread owns all blocking gosrv calls.
+    // thread owns all blocking gosrv calls. Bail out early if the
+    // init already failed permanently.
     auto deadline = std::chrono::steady_clock::now() + wait;
     while (std::chrono::steady_clock::now() < deadline)
     {
+      if (clientFailed)
+      {
+        return false;
+      }
       if (clientReady)
       {
         return true;
       }
       std::this_thread::sleep_for(100ms);
     }
-    return clientReady;
+    return clientReady && !clientFailed;
   }
 }
 
@@ -375,7 +389,7 @@ std::vector<std::string> Gosrv::Browse()
     {
       continue;
     }
-    out.push_back(Utils::String::VA("{}:{}", servers[i].host, servers[i].port));
+    out.push_back(std::format("{}:{}", servers[i].host, servers[i].port));
   }
 
   return out;
@@ -403,7 +417,7 @@ void Gosrv::StartServer()
     // addresses come from the hosting configuration (gosrv_bootstrap).
     auto bootstrap = splitAddrs(Bootstrap.get<const char*>());
     std::vector<const char*> cOwn = toCStrings(bootstrap);
-    if (cOwn.empty())
+    if (bootstrap.empty())
     {
       Components::Logger::Print("^1gosrv: gosrv_bootstrap is empty; cannot announce to the DHT server list\n");
       return;
@@ -417,7 +431,7 @@ void Gosrv::StartServer()
     cfg.bootstrap_addrs = cOwn.data();
     cfg.startup_timeout_ms = 30000;
 
-    auto* h = Api.new_(reinterpret_cast<SlConfig*>(&cfg));
+    auto* h = Api.new_(&cfg);
     if (h == nullptr)
     {
       Components::Logger::Print("^1gosrv: sl_new failed: {}\n", Api.lastError());
@@ -456,4 +470,5 @@ void Gosrv::StartServer()
     // server runs for its whole lifetime, so nothing to do here.
   })
   .detach();
+}
 }

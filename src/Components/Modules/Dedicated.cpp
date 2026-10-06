@@ -286,11 +286,17 @@ namespace Components
 
         // Instead of the legacy 2 minute UDP heartbeat to the engine
         // master, announce this server to the gosrv DHT server list.
-        // The Go-side announce loop owns the refresh interval; this
-        // is a one-time start. No-op (with a log hint) unless
-        // gosrv_host is set.
+        // Deferred to the server pipeline, like the old heartbeat
+        // was, because this constructor runs before the gosrv dvars
+        // exist (they are registered when the Gosrv component's
+        // dvar-init callback fires). The Go-side announce loop owns
+        // the refresh interval; this is a one-time start. No-op (with
+        // a log hint) unless gosrv_host is set.
         //
-        Gosrv::StartServer();
+        Scheduler::Once([]
+        {
+          Gosrv::StartServer();
+        }, Scheduler::Pipeline::SERVER);
       }
     }
     else

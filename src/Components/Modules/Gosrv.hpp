@@ -39,7 +39,8 @@ namespace Components
     // gosrv_host is set. Call once from Dedicated init.
     static void StartServer();
 
-  private:
+    // Public like in the sibling components (ServerList, Dedicated):
+    // the free-function helpers below read the join/bootstrap dvars.
     static Dvar::Var Enable;
     static Dvar::Var JoinMode;
     static Dvar::Var Bootstrap;
