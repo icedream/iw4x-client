@@ -1,6 +1,6 @@
 #include "Gosrv.hpp"
 #include "Dedicated.hpp"
-#include "Loader.hpp"
+#include "Components/Loader.hpp"
 #include "ServerList.hpp"
 
 #include <Utils/Library.hpp>
