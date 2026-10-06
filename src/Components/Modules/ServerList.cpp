@@ -3,6 +3,7 @@
 
 #include "Discovery.hpp"
 #include "Events.hpp"
+#include "Gosrv.hpp"
 #include "Node.hpp"
 #include "Party.hpp"
 #include "ServerList.hpp"
@@ -424,6 +425,36 @@ namespace Components
 
       std::jthread([masterServerName, masterPort]()
       {
+        // DHT server list first (gosrv): the response carries only
+        // address hints, exactly like the master response; every row
+        // is still filled by the direct serverinfo query below.
+        auto dhtListed = false;
+        if (Gosrv::IsEnabled())
+        {
+          const auto dhtServers = Gosrv::Browse();
+          if (!dhtServers.empty())
+          {
+            dhtListed = true;
+            std::vector<std::string> addrs = dhtServers;
+            Scheduler::Once([addrs]()
+            {
+              for (const auto& addr : addrs)
+              {
+                InsertRequest(Network::Address(addr));
+              }
+            }, Scheduler::Pipeline::CLIENT);
+          }
+        }
+
+        // The DHT list alone is enough when it worked and the legacy
+        // master fallback is disabled (gosrv_master_fallback 0).
+        if (dhtListed && !Gosrv::MasterFallback())
+        {
+          std::lock_guard _(RefreshContainer.mutex);
+          RefreshContainer.awaitingList = false;
+          return;
+        }
+
         const auto host = "master.iw4x.io";
         const auto url = std::format("http://{}/v1/servers/iw4x?protocol={}", host, PROTOCOL);
         const auto reply = Utils::WebIO("IW4x", url).setTimeout(5000)->get();

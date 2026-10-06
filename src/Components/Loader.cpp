@@ -76,6 +76,7 @@
 
 #include "Modules/BotLib/lPrecomp.hpp"
 #include "Modules/ViewModelFxSetup.hpp"
+#include "Modules/Gosrv.hpp"
 
 namespace Components
 {
@@ -189,6 +190,8 @@ namespace Components
     Register(new Zones());
 
     Register(new GSC::GSC());
+
+    Register(new Gosrv());
 
     Register(new BotLib::lPrecomp());
     Register(new ViewModelFxSetup::Setup());

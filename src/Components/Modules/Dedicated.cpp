@@ -5,6 +5,7 @@
 #include "ClanTags.hpp"
 #include "Events.hpp"
 #include "Friends.hpp"
+#include "Gosrv.hpp"
 #include "Party.hpp"
 #include "ServerCommands.hpp"
 
@@ -283,9 +284,13 @@ namespace Components
           ClanTags::SendClanTagsToClients();
         }, Scheduler::Pipeline::SERVER, 10s);
 
-        // Heartbeats
-        Scheduler::Once(Heartbeat, Scheduler::Pipeline::SERVER);
-        Scheduler::Loop(Heartbeat, Scheduler::Pipeline::SERVER, 2min);
+        // Instead of the legacy 2 minute UDP heartbeat to the engine
+        // master, announce this server to the gosrv DHT server list.
+        // The Go-side announce loop owns the refresh interval; this
+        // is a one-time start. No-op (with a log hint) unless
+        // gosrv_host is set.
+        //
+        Gosrv::StartServer();
       }
     }
     else
