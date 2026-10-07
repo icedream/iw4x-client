@@ -92,11 +92,11 @@ Dvars (all `DVAR_ARCHIVE`):
 |---|---|---|
 | `gosrv_enable` | `1` | master switch for the DHT list |
 | `gosrv_join_mode` | `1` | 0 direct bootstrap, 1 anchor chain |
-| `gosrv_bootstrap` | compiled-in default | own-DHT bootstrap addrs (mode 0) |
-| `gosrv_anchor_bootstrap` | compiled-in default | anchor-DHT addrs (mode 1) |
-| `gosrv_op_key` | compiled-in default | operator public key (hex) |
-| `gosrv_version` | `0x99` | exact-match version announced by servers |
-| `gosrv_browse_timeout_ms` | `30000` | browse budget |
+| `gosrv_bootstrap` | empty | own-DHT bootstrap addrs (mode 0); `/p2p/` suffix required |
+| `gosrv_anchor_bootstrap` | empty | anchor-DHT addrs (mode 1); `/p2p/` suffix required |
+| `gosrv_op_key` | empty | operator public key (hex, 64 chars) |
+| `gosrv_version` | `1.0` | exact-match version; must be dotted numeric (MAJOR.MINOR), e.g. `1.0`, `1.0.0` |
+| `gosrv_browse_timeout_ms` | `8000` | browse budget (500-30000) |
 | `gosrv_master_fallback` | `1` | also query master.iw4x.io and merge |
 
 The compiled-in defaults (anchor addrs, operator key) are constants in the
@@ -264,8 +264,10 @@ Remaining for first field test:
 2. Point a dedicated server at the localnet: gosrv_host <public ip>,
    gosrv_bootstrap from localnet B lines (with /p2p/ suffix),
    gosrv_port 28960; confirm the client browser shows it.
-3. Decide the gosrv_version default with the community (currently
-   "1"; protocol 0x99 is not a valid dotted version string).
+3. Note on gosrv_version: it must be a dotted-numeric string
+   (protocol.NormalizeVersion rejects bare "1" and hex like "0x99");
+   the default is "1.0". Clients and servers must use the exact
+   same string.
 4. Operator infrastructure: run the anchor pair, sign the bootstrap
    list, bake DEFAULT_ANCHOR_ADDRS/DEFAULT_OPERATOR_KEY_HEX into the
    fork (Gosrv.cpp) or ship them via the launcher.

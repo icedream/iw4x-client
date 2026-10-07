@@ -327,7 +327,7 @@ Gosrv::Gosrv()
       OperatorKey = Dvar::Register<const char*>("gosrv_op_key", "",
         Dedicated::IsEnabled() ? Game::DVAR_NONE : Game::DVAR_ARCHIVE,
         "Operator ed25519 public key (hex, 64 chars) for anchor list verification");
-      Version = Dvar::Register<const char*>("gosrv_version", "1",
+      Version = Dvar::Register<const char*>("gosrv_version", "1.0",
         Dedicated::IsEnabled() ? Game::DVAR_NONE : Game::DVAR_ARCHIVE,
         "Exact game version the DHT list is filtered on");
       Host = Dvar::Register<const char*>("gosrv_host", "",
